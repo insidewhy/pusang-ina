@@ -1,0 +1,12 @@
+{
+  "name": "pusang-ina",
+  "version": "1.0.0",
+  "description": "Vue configuration for ast-grep",
+  "scripts": {
+    "build": "./scripts/build-ast-grep-modules.sh",
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "keywords": ["ast-grep"],
+  "author": "insidewhy <github@chilon.net>",
+  "license": "ISC"
+}

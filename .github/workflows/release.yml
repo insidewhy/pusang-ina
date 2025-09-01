@@ -1,0 +1,123 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-glibc
+          - os: ubuntu-latest
+            target: linux-musl
+            container: alpine:latest
+          - os: macos-latest
+            target: macos-arm64
+            arch: arm64
+          - os: macos-latest
+            target: macos-x64
+            arch: x64
+          - os: windows-latest
+            target: windows
+
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install build tools (Ubuntu)
+        if: matrix.target == 'linux-glibc'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Install dependencies (Alpine)
+        if: matrix.target == 'linux-musl'
+        run: |
+          apk add --no-cache bash gcc make musl-dev nodejs npm git tree-sitter-cli
+
+      - name: Setup MSVC (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build modules
+        run: |
+          chmod +x scripts/build-ast-grep-modules.sh
+          bash scripts/build-ast-grep-modules.sh
+        shell: bash
+
+      - name: Prepare binaries
+        run: |
+          mkdir -p dist/${{ matrix.target }}
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            mv lib/scss.dll dist/${{ matrix.target }}/scss.dll
+            mv lib/vue.dll dist/${{ matrix.target }}/vue.dll
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            mv lib/scss.dylib dist/${{ matrix.target }}/scss.dylib
+            mv lib/vue.dylib dist/${{ matrix.target }}/vue.dylib
+          else
+            mv lib/scss.so dist/${{ matrix.target }}/scss.so
+            mv lib/vue.so dist/${{ matrix.target }}/vue.so
+          fi
+        shell: bash
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          for dir in artifacts/binaries-*; do
+            target=$(basename $dir | sed 's/binaries-//')
+            for file in $dir/*; do
+              basename=$(basename $file)
+              ext="${basename##*.}"
+              name="${basename%.*}"
+              cp $file "release/${name}-${target}.${ext}"
+            done
+          done
+
+      - name: Delete existing release if exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          gh release delete "$TAG_NAME" --yes --cleanup-tag || true
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          gh release create "$TAG_NAME" \
+            --title "Release $TAG_NAME" \
+            --notes "Automated release for $TAG_NAME" \
+            release/*

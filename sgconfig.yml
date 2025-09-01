@@ -1,0 +1,28 @@
+ruleDirs:
+  - ast/rules
+utilDirs:
+  - ast/utils
+
+customLanguages:
+  vue:
+    libraryPath: node_modules/pusang-ina/lib/vue.so
+    extensions: [vue]
+    expandoChar: $
+  scss:
+    libraryPath: node_modules/pusang-ina/lib/scss.so
+    extensions: [scss]
+    expandoChar: $
+
+languageInjections:
+  - hostLanguage: vue
+    rule:
+      pattern: <template>$CONTENT</template>
+    injected: html
+  - hostLanguage: vue
+    rule:
+      pattern: <script $$$ lang="ts" $$$>$CONTENT</script>
+    injected: typescript
+  - hostLanguage: vue
+    rule:
+      pattern: <style $$$ lang="scss" $$$>$CONTENT</style>
+    injected: scss
